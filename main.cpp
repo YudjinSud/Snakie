@@ -1,12 +1,12 @@
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <vector>
+#include <deque>
 #include <windows.h>
 
-#define width 640
-#define height 480
-#define cellSize 10
-#define step 10
+#define fieldSize 512
+#define cellSize 15
+#define step 15
 
 struct Cell {
 	sf::RectangleShape rect;
@@ -17,29 +17,21 @@ struct Cell {
 
 
 struct Snake {
-	std::vector<Cell*> body;
-	int len = 0; // current number of cells
-	int tail = 0;
+	std::deque<Cell*> body;
 };
 
 
 
 void printDebugSnake(Snake *snake) {
-	system("cls");
-	for (int i = 0; i < snake->len; i++) {
-		std::cout << "Cell " << i << "\n";
-		std::cout << "X :: " << snake->body[i]->x << " Y :: " << snake->body[i]->y << "\n";
-		std::cout << "Direction :: " << snake->body[i]->direction << "\n";
-		std::cout << "=========================\n";
-	}
+	//std::cout << "Tail :: " << snake->tail << "\n";
 }
 
 
-void drawCell(sf::RenderWindow &window, Cell *cell) {
+void drawCell(sf::RenderWindow &window, Cell *cell, int n) {
 	//why pointer - cell* ?
 	//for now i suppose there will be a lot of cells - certainly.
 	//And every game loop we have to pass all that data to draw() and update() stuff
-	cell->rect.setFillColor(sf::Color::Red);
+	cell->rect.setFillColor(sf::Color::Magenta);
 	cell->rect.setOutlineColor(sf::Color::Black);
 	cell->rect.setOutlineThickness(1);
 	cell->rect.setPosition(cell->x, cell->y);
@@ -50,7 +42,7 @@ void drawCell(sf::RenderWindow &window, Cell *cell) {
 
 void drawSnake(sf::RenderWindow &window, Snake *snake) {
 	for (int i = 0; i < snake->body.size(); i++) {
-		drawCell(window, snake->body[i]);
+		drawCell(window, snake->body[i], i);
 	}
 	window.display();
 }
@@ -58,12 +50,10 @@ void drawSnake(sf::RenderWindow &window, Snake *snake) {
 
 void addCell(Snake *snake) {
 	Cell *push = new Cell;
-	Cell *tail = snake->body[snake->len-1];
+	Cell *tail = snake->body[snake->body.size() - 1];
 	push->x = tail->x - cellSize;
 	push->y = tail->y;
 	push->direction = 0;
-	snake->len++;
-	snake->tail++;
 	snake->body.push_back(push);
 }
 
@@ -94,35 +84,60 @@ int processKeyboard(sf::Event event, sf::RenderWindow &window) {
 	return direction;
 }
 
-
 void copyLastToFirst(Snake *snake) {
-	if (snake->tail <= 0) {
-		snake->tail = snake->len - 1;
+	//only we have to do to animate snake - delete tail and insert it right on the head of sneak
+	int size = snake->body.size();
+	Cell *push = new Cell;
+	push->direction = snake->body[0]->direction;
+	push->rect = snake->body[0]->rect;
+	push->x  = snake->body[0]->x;
+	push->y = snake->body[0]->y;
+	snake->body.push_front(push);
+	snake->body.pop_back();
+}
+
+
+int checkBoundary(Cell *head) {
+	//check if snake is out of game field
+	if (head->x > fieldSize - cellSize)
+	{
+		return -fieldSize;
 	}
-	int len = snake->body.size();
-	snake->body[snake->tail]->x = snake->body[0]->x;
-	snake->body[snake->tail]->y = snake->body[0]->y;
-	snake->body[snake->tail]->rect = snake->body[0]->rect;
-	snake->body[snake->tail]->direction = snake->body[0]->direction;
-	snake->tail -= 1;
+	else if (head->x < -cellSize)
+	{
+		return -fieldSize;
+	}
+	else if (head->y > fieldSize - cellSize)
+	{
+		return -fieldSize;
+	}
+	else if (head->y < -cellSize)
+	{
+		return -fieldSize;
+	}
+	return 0;
 }
 
 
 
 void updateSnakeCells(Snake *snake) {
+	int delta = checkBoundary(snake->body.front());
+	if (delta == 0) {
+		delta = step;
+	}
 	copyLastToFirst(snake);
 	switch (snake->body[0]->direction) {
 		case 1:
-			snake->body[0]->y -= step;
+			snake->body[0]->y -= delta;
 			break;
 		case 2:
-			snake->body[0]->y += step;
+			snake->body[0]->y += delta;
 			break;
 		case 3:
-			snake->body[0]->x -= step;
+			snake->body[0]->x -= delta;
 			break;
 		case 4:
-			snake->body[0]->x += step;
+			snake->body[0]->x += delta;
 			break;
 	}
 }
@@ -147,62 +162,27 @@ int checkCellsRelation(Cell *c1, Cell *c2) {
 }
 
 
-int collisionDetection(Cell *head) {
-	if (head->x > width - cellSize)
-	{
-		return 2;
-	}
-	else if (head->x < cellSize)
-	{
-		return 1;
-	}
-	else if (head->y > height - cellSize)
-	{
-		return 4;
-	}
-	else if (head->y < cellSize)
-	{
-		return 3;
-	}
-	return 0;
-}
-
-
 void rotateHead(Snake *snake, int direction) {
-	//int colDet = collisionDetection(snake->body[0]);
-	//if (colDet) {
-	//	direction = colDet;
-	//}
 	//need to check if direction is possible
 	int relation12 = checkCellsRelation(snake->body[0], snake->body[1]);
 	int relation23 = checkCellsRelation(snake->body[1], snake->body[2]); // check if right or left rotation is even possible
 	// because maybe there some 3'd cell;
 	if (snake->body[0]->direction != direction && direction == 1 && relation12 != 1) //up
 	{
-		snake->body[0]->x = snake->body[snake->tail+1]->x; // after some iterations 2'nd cell is near tail...
-		//need to know which cell now is closest to head.
-		snake->body[0]->y -= cellSize;
 		snake->body[0]->direction = direction;
 	}
 	else if(snake->body[0]->direction != direction && direction == 2 && relation12 != 2) //down
 	{
-		snake->body[0]->x = snake->body[snake->tail+1]->x;
-		snake->body[0]->y += cellSize;
 		snake->body[0]->direction = direction;
 	}
 	else if (snake->body[0]->direction != direction && direction == 3 && relation12 != 3 && relation23 != 3) // left
 	{
-		snake->body[0]->x -= cellSize;
-		snake->body[0]->y = snake->body[snake->tail+1]->y;
 		snake->body[0]->direction = direction;
 	}
 	else if (snake->body[0]->direction != direction && direction == 4 && relation12 != 4 && relation23 != 4) // right
 	{
-		snake->body[0]->x += cellSize;
-		snake->body[0]->y = snake->body[snake->tail+1]->y;
 		snake->body[0]->direction = direction;
 	}
-	printDebugSnake(snake);
 }
 
 
@@ -216,24 +196,19 @@ void fillSnake(Snake *snake, int n) {
 
 int main()
 {
-	sf::RenderWindow window(sf::VideoMode(width, height), "Snakie!");
+	sf::RenderWindow window(sf::VideoMode(fieldSize, fieldSize), "Snakie!");
 	sf::Event event;
 
 	Cell *cell1 = new Cell;
 	cell1->x = 100;
 	cell1->y = 100;
 	cell1->direction = 4;
-	
 
 	Snake *snake = new Snake; //again, we don't know how much of stack available here. Using heap therefore.
-	snake->body = std::vector<Cell*>();
-	snake->body.push_back(cell1);
-	snake->len = 1;
-	std::cout << snake->len << "\n";
-	fillSnake(snake, 30);
+	snake->body = std::deque<Cell*>();
+	snake->body.push_back(cell1); 
 
-	std::cout << snake->len << "\n";
-
+	fillSnake(snake, 3);
 
 	drawSnake(window, snake);
 
@@ -248,12 +223,10 @@ int main()
 				rotateHead(snake, direction);
 			}
 		}
-		//std::cout << direction << '\n';
 		updateSnakeCells(snake);
-		//calculateCellsDirection(snake, direction);
 		drawSnake(window, snake);
 		window.clear();
-		sleep(sf::milliseconds(30));
+		sleep(sf::milliseconds(50));
 	}
 
 	return 0;
